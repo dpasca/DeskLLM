@@ -1,0 +1,6 @@
+.config.json
+*_ImGui.ini
+DeskLLM.ini
+__pycache__/
+*.pyc
+

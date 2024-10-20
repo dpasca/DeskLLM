@@ -1,0 +1,21 @@
+{
+    "name": "web_search",
+    "description": "Perform a web search using DuckDuckGo",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The search query"
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "The maximum number of search results to return. Defaults to 5."
+            }
+        },
+        "required": ["query"]
+    },
+    "required_modules": ["duckduckgo_search"],
+    "creation_timestamp": 1726743460,
+    "source": "web_search.py"
+}
