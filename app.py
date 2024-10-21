@@ -184,6 +184,10 @@ Key guidelines:
 
         #self.chat_history = SAMPLE_CHAT_HISTORY
 
+        # Used to save what's being edited (index and original content)
+        self.edit_content = None
+        self.edit_index = -1
+
 def send_message(app_state):
     if app_state.user_input.strip():
         user_input = app_state.user_input.strip()
@@ -213,13 +217,49 @@ def get_assistant_response_thread(app_state, user_input):
         app_state.chat_history.append(("assistant", f"[Error] {str(e)}"))
         log_err(f"Assistant error: {str(e)}")
 
+#===============================================================================
+# GUI Edit
+#===============================================================================
+def gui_on_edit_message(app_state, index, content):
+    if app_state.edit_index == index:
+        app_state.edit_content = None
+        app_state.edit_index = -1
+    else:
+        app_state.edit_content = content
+        app_state.edit_index = index
+
+def gui_edit_window(app_state, index, msg_type, content):
+    imgui.begin(f"Edit Message {index}")
+    # Edit mode
+    changed, new_content = imgui.input_text_multiline(
+        label=f"##edit_{index}",
+        str=content,
+        size=ImVec2(-20, -40)
+    )
+    if changed:
+        app_state.edit_content = new_content
+
+    if imgui.button(f"Save##{index}"):
+        app_state.chat_history[index] = (msg_type, new_content)
+        app_state.edit_content = None
+        app_state.edit_index = -1
+    imgui.same_line()
+    if imgui.button(f"Cancel##{index}"):
+        app_state.edit_content = None
+        app_state.edit_index = -1
+
+    imgui.end()
+
+#===============================================================================
+# GUI Main
+#===============================================================================
 def gui_function(app_state):
     # Create the chat history area
     size = ImVec2(0, -50)  # Leave space for the input at the bottom
     imgui.begin_child("ChatHistory", size=size, child_flags=0)
 
     # Calculate the content width, subtracting the right padding
-    RIGHT_PADDING = 4
+    RIGHT_PADDING = 6
     content_width = imgui.get_content_region_avail().x - RIGHT_PADDING
 
     # Empty message to start the chat history because 1st message takes a
@@ -234,6 +274,10 @@ def gui_function(app_state):
     for index, message in enumerate(app_state.chat_history):
         msg_type, content = message
 
+        # If in edit mode, use the edited content
+        if app_state.edit_index == index:
+            content = app_state.edit_content
+
         # Background color based on message type
         bg_color = ImVec4(0.2, 0.2, 0.2, 1.0) if msg_type == "user" else ImVec4(0.25, 0.25, 0.25, 1.0)
         imgui.push_style_color(imgui.Col_.child_bg, bg_color)
@@ -243,8 +287,24 @@ def gui_function(app_state):
             size=ImVec2(content_width, 0),
             child_flags=imgui.ChildFlags_.always_use_window_padding
         )
-        # Render the markdown content
+
+        # Add Edit and Copy buttons
+        imgui.push_style_var(imgui.StyleVar_.frame_padding, ImVec2(2, 2))
+        imgui.same_line(imgui.get_window_width() - 90)
+        if imgui.button(f"Edit##{index}"):
+            gui_on_edit_message(app_state, index, content)
+        imgui.same_line()
+        if imgui.button(f"Copy##{index}"):
+            imgui.set_clipboard_text(content)
+        imgui.pop_style_var()
+
+        # Handle edit mode UI
+        if app_state.edit_index == index:
+            gui_edit_window(app_state, index, msg_type, content)
+
+        # Render the message content
         imgui_md.render(content)
+
         imgui.end_child()
 
         # Pop the added style variables
