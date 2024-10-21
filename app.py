@@ -182,9 +182,10 @@ Key guidelines:
         self.chat_history: List[Tuple[str, str]] = []  # List of tuples (message_type, message_content)
         self.user_input = ""
 
+        # Use sample chat history for testing
         #self.chat_history = SAMPLE_CHAT_HISTORY
 
-        # Used to save what's being edited (index and original content)
+        # Keep track of what's being edited
         self.edit_content = None
         self.edit_index = -1
 
@@ -228,27 +229,71 @@ def gui_on_edit_message(app_state, index, content):
         app_state.edit_content = content
         app_state.edit_index = index
 
-def gui_edit_window(app_state, index, msg_type, content):
-    imgui.begin(f"Edit Message {index}")
+def gui_edit_window(app_state):
+    index = app_state.edit_index
+    if index == -1:
+        return
+
+    # Get the main viewport size
+    viewport_size = imgui.get_main_viewport().size
+
+    # Calculate 70% of the viewport size
+    window_width = int(viewport_size.x * 0.7)
+    window_height = int(viewport_size.y * 0.7)
+
+    # Set the initial window size and position
+    imgui.set_next_window_size(ImVec2(window_width, window_height), imgui.Cond_.once)
+    imgui.set_next_window_pos(
+        ImVec2((viewport_size.x - window_width) / 2, (viewport_size.y - window_height) / 2),
+        imgui.Cond_.once
+    )
+    # Begin the window
+    imgui.begin(f"Edit Message", flags=imgui.WindowFlags_.no_collapse)
+
     # Edit mode
     changed, new_content = imgui.input_text_multiline(
-        label=f"##edit_{index}",
-        str=content,
+        label=f"##editbox",
+        str=app_state.edit_content,
         size=ImVec2(-20, -40)
     )
     if changed:
         app_state.edit_content = new_content
 
-    if imgui.button(f"Save##{index}"):
-        app_state.chat_history[index] = (msg_type, new_content)
+    if imgui.button(f"Save"):
+        # Replace the content of the message
+        app_state.chat_history[index] = (app_state.chat_history[index][0], app_state.edit_content)
         app_state.edit_content = None
         app_state.edit_index = -1
+
     imgui.same_line()
-    if imgui.button(f"Cancel##{index}"):
+
+    if imgui.button(f"Cancel"):
         app_state.edit_content = None
         app_state.edit_index = -1
 
     imgui.end()
+
+def gui_message_buttons(app_state, index, content):
+    #if not (imgui.is_window_hovered() or app_state.edit_index == index):
+    #    return
+
+    # Get the available width of the content region
+    available_width = imgui.get_content_region_avail().x
+
+    # Calculate the total width of the buttons
+    button_width = imgui.calc_text_size("Edit").x + imgui.calc_text_size("Copy").x + imgui.get_style().item_spacing.x * 3
+
+    # Set the cursor position to the right side
+    imgui.set_cursor_pos_x(available_width - button_width)
+
+    # Draw the buttons
+    if imgui.small_button(f"Edit##{index}"):
+        gui_on_edit_message(app_state, index, content)
+
+    imgui.same_line()
+
+    if imgui.small_button(f"Copy##{index}"):
+        imgui.set_clipboard_text(content)
 
 #===============================================================================
 # GUI Main
@@ -285,25 +330,15 @@ def gui_function(app_state):
         imgui.begin_child(
             f"Message_{index}",
             size=ImVec2(content_width, 0),
-            child_flags=imgui.ChildFlags_.always_use_window_padding
+            child_flags=(imgui.ChildFlags_.always_use_window_padding |
+                         imgui.ChildFlags_.auto_resize_y)
         )
-
-        # Add Edit and Copy buttons
-        imgui.push_style_var(imgui.StyleVar_.frame_padding, ImVec2(2, 2))
-        imgui.same_line(imgui.get_window_width() - 90)
-        if imgui.button(f"Edit##{index}"):
-            gui_on_edit_message(app_state, index, content)
-        imgui.same_line()
-        if imgui.button(f"Copy##{index}"):
-            imgui.set_clipboard_text(content)
-        imgui.pop_style_var()
-
-        # Handle edit mode UI
-        if app_state.edit_index == index:
-            gui_edit_window(app_state, index, msg_type, content)
 
         # Render the message content
         imgui_md.render(content)
+
+        # Call the new function for Edit and Copy buttons
+        gui_message_buttons(app_state, index, content)
 
         imgui.end_child()
 
@@ -314,6 +349,9 @@ def gui_function(app_state):
     if imgui.get_scroll_y() >= imgui.get_scroll_max_y():
         imgui.set_scroll_here_y(1.0)
     imgui.end_child()
+
+    # Handle edit mode UI
+    gui_edit_window(app_state)
 
     imgui.separator()
 
@@ -330,6 +368,9 @@ def gui_function(app_state):
     if imgui.button("Send") or (enter_pressed and app_state.user_input.strip()):
         send_message(app_state)
 
+#===============================================================================
+# GUI Log Window
+#===============================================================================
 def log_window_gui(app_state):
     # Begin the log window
     imgui.begin("Logs")
@@ -466,3 +507,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
