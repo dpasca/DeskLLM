@@ -188,7 +188,7 @@ def gui_function(app_state):
     size = ImVec2(0, -50)  # Leave space for the input at the bottom
     imgui.begin_child("ChatHistory", size=size, child_flags=0)
 
-    for message in app_state.chat_history:
+    for index, message in enumerate(app_state.chat_history):
         msg_type, content = message
 
         # Background color based on message type
@@ -197,23 +197,26 @@ def gui_function(app_state):
         imgui.push_style_var(imgui.StyleVar_.frame_padding, ImVec2(5, 5))
         imgui.push_style_var(imgui.StyleVar_.window_rounding, 5.0)
 
+        #disp_text = f"{msg_type.capitalize()}: {content}"
+        disp_text = content
+
         # Calculate the height of the text more accurately
         wrap_width = imgui.get_window_width() - imgui.get_style().frame_padding.x * 2
-        text_height = imgui.calc_text_size(f"{msg_type.capitalize()}: {content}", wrap_width=wrap_width).y
+        text_height = imgui.calc_text_size(disp_text, wrap_width=wrap_width).y
 
         # Add extra padding for better visual appearance
         extra_padding = 10
         total_height = text_height + imgui.get_style().frame_padding.y * 2 + extra_padding
 
-        # Start child window with dynamic height
+        # Start child window with dynamic height and progressive index
         imgui.begin_child(
-            f"{msg_type.capitalize()} Message {id(content)}",
+            f"Message_{index}",
             size=ImVec2(0, total_height),
             child_flags=0
         )
 
         imgui.push_text_wrap_pos(wrap_width)
-        imgui.text_wrapped(f"{msg_type.capitalize()}: {content}")
+        imgui.text_wrapped(disp_text)
         imgui.pop_text_wrap_pos()
 
         imgui.end_child()
