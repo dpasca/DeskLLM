@@ -1,6 +1,7 @@
 import threading
 from typing import List, Tuple
 from imgui_bundle import hello_imgui, imgui, immapp, ImVec2, ImVec4
+from imgui_bundle import imgui_md
 from dyna_tools_manager import DynaToolsManager
 from conversation import Conversation
 import inspect
@@ -74,6 +75,35 @@ def log_wrn(message):
 
 def log_err(message):
     log_lev("e", message)
+
+#===============================================================================
+SAMPLE_CHAT_HISTORY = [
+    ("user", "Hello, how are you?"),
+    ("assistant", "I'm doing great, thanks for asking!"),
+    ("user", "Please show me sample Markdown formatting, including a simple table."),
+    ("assistant", """Here some formatted text:
+
+## Header 2
+### Header 3
+**bold**
+*italic*
+[link](https://www.example.com)
+![image](https://www.example.com/image.png)
+
+Here is a simple table:
+
+| Header 1 | Header 2 | Header 3 |
+| -------- | -------- | -------- |
+| Cell 1   | Cell 2   | Cell 3   |
+| Cell 4   | Cell 5   | Cell 6   |
+| Cell 7   | Cell 8   | Cell 9   |
+
+Here is a code block:
+
+```python
+print('Hello, world!')
+```""")
+]
 
 #===============================================================================
 # AppState
@@ -152,6 +182,8 @@ Key guidelines:
         self.chat_history: List[Tuple[str, str]] = []  # List of tuples (message_type, message_content)
         self.user_input = ""
 
+        #self.chat_history = SAMPLE_CHAT_HISTORY
+
 def send_message(app_state):
     if app_state.user_input.strip():
         user_input = app_state.user_input.strip()
@@ -182,11 +214,22 @@ def get_assistant_response_thread(app_state, user_input):
         log_err(f"Assistant error: {str(e)}")
 
 def gui_function(app_state):
-    imgui.begin("Chat")
-
     # Create the chat history area
     size = ImVec2(0, -50)  # Leave space for the input at the bottom
     imgui.begin_child("ChatHistory", size=size, child_flags=0)
+
+    # Calculate the content width, subtracting the right padding
+    RIGHT_PADDING = 4
+    content_width = imgui.get_content_region_avail().x - RIGHT_PADDING
+
+    # Empty message to start the chat history because 1st message takes a
+    # screen worth of height for some reason
+    imgui.begin_child(
+        "Message_-1",
+        size=ImVec2(content_width, 0),
+        child_flags=imgui.ChildFlags_.always_use_window_padding
+    )
+    imgui.end_child()
 
     for index, message in enumerate(app_state.chat_history):
         msg_type, content = message
@@ -194,35 +237,18 @@ def gui_function(app_state):
         # Background color based on message type
         bg_color = ImVec4(0.2, 0.2, 0.2, 1.0) if msg_type == "user" else ImVec4(0.25, 0.25, 0.25, 1.0)
         imgui.push_style_color(imgui.Col_.child_bg, bg_color)
-        imgui.push_style_var(imgui.StyleVar_.frame_padding, ImVec2(5, 5))
-        imgui.push_style_var(imgui.StyleVar_.window_rounding, 5.0)
 
-        #disp_text = f"{msg_type.capitalize()}: {content}"
-        disp_text = content
-
-        # Calculate the height of the text more accurately
-        wrap_width = imgui.get_window_width() - imgui.get_style().frame_padding.x * 2
-        text_height = imgui.calc_text_size(disp_text, wrap_width=wrap_width).y
-
-        # Add extra padding for better visual appearance
-        extra_padding = 10
-        total_height = text_height + imgui.get_style().frame_padding.y * 2 + extra_padding
-
-        # Start child window with dynamic height and progressive index
         imgui.begin_child(
             f"Message_{index}",
-            size=ImVec2(0, total_height),
-            child_flags=0
+            size=ImVec2(content_width, 0),
+            child_flags=imgui.ChildFlags_.always_use_window_padding
         )
-
-        imgui.push_text_wrap_pos(wrap_width)
-        imgui.text_wrapped(disp_text)
-        imgui.pop_text_wrap_pos()
-
+        # Render the markdown content
+        imgui_md.render(content)
         imgui.end_child()
-        imgui.pop_style_var(2)
+
+        # Pop the added style variables
         imgui.pop_style_color()
-        imgui.spacing()
 
     # Auto scroll to bottom
     if imgui.get_scroll_y() >= imgui.get_scroll_max_y():
@@ -243,8 +269,6 @@ def gui_function(app_state):
     imgui.same_line()
     if imgui.button("Send") or (enter_pressed and app_state.user_input.strip()):
         send_message(app_state)
-
-    imgui.end()
 
 def log_window_gui(app_state):
     # Begin the log window
@@ -336,15 +360,21 @@ def save_config(config):
 #===============================================================================
 def main():
     config = load_config()
-
-    #app_state = AppState(model="llama3.2")
-    #app_state = AppState(model="llama3.1")
-    #app_state = AppState(model="gpt-4o")
     app_state = AppState(model=config.get("model", "qwen2.5"))
+
+    # Initialize Markdown renderer
+    imgui_md.initialize_markdown()
 
     # Set up the app
     rparams = hello_imgui.RunnerParams()
+
+    # Add font loader function to the runner params, for Markdown rendering
+    rparams.callbacks.load_additional_fonts = imgui_md.get_font_loader_function()
+    # Set the window title
     rparams.app_window_params.window_title = "DeskLLM"
+
+    # Set initial window size
+    rparams.app_window_params.window_geometry.size = (1024, 1200)
 
     # Enable docking by setting the default ImGui window type to provide a full-screen dock space
     rparams.imgui_window_params.default_imgui_window_type = hello_imgui.DefaultImGuiWindowType.provide_full_screen_dock_space
@@ -358,19 +388,21 @@ def main():
 
     def post_init():
         io = imgui.get_io()
-        # Load a DPI-responsive font
-        font_params = hello_imgui.FontLoadingParams()
-        font_params.adjust_size_to_dpi = config["adjust_font_to_dpi"]
         # Set the global font scale
-        # NOTE: The global scale is already DPI-aware (e.g. 0.5 on HiDPI), so we multiply into it
         io.font_global_scale *= config["font_scale"]
-        # Scale all style sizes
-        #imgui.get_style().scale_all_sizes(1.0)
+
+        if config.get("adjust_font_to_dpi", False):
+            # Adjust DPI scaling without reloading fonts
+            style = imgui.get_style()
+            style.scale_all_sizes(1.0)
 
     rparams.callbacks.post_init = post_init
 
     # Run the app
     hello_imgui.run(rparams)
+
+    # Cleanup Markdown renderer
+    imgui_md.de_initialize_markdown()
 
 if __name__ == "__main__":
     main()
